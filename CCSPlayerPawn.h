@@ -60,7 +60,7 @@ public:
 
 	bool IsBot()
 	{
-		return m_fFlags() & FL_PAWN_FAKECLIENT;
+		return m_fFlags() & FL_BOT;
 	}
 };
 
@@ -76,6 +76,7 @@ public:
 	SCHEMA_FIELD(CUtlString, m_strVOPrefix);
 	SCHEMA_FIELD(float, m_flVelocityModifier);
 	SCHEMA_FIELD(CCSPlayer_ActionTrackingServices*, m_pActionTrackingServices);
+	SCHEMA_FIELD(CCSPlayer_DamageReactServices*, m_pDamageReactServices);
 	SCHEMA_FIELD(GameTime_t, m_flHealthShotBoostExpirationTime);
 	SCHEMA_FIELD(int32, m_ArmorValue);
 	SCHEMA_FIELD(bool, m_bInBuyZone);

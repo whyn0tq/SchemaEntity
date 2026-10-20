@@ -3,7 +3,7 @@
 #include "playerslot.h"
 #include "steam/steamclientpublic.h"
 #include "utlstring.h"
-#include "inetchannel.h"
+#include "networksystem/inetchannel.h"
 #include "networkbasetypes.pb.h"
 
 class CServerSideClient : public INetworkMessageProcessingPreFilter

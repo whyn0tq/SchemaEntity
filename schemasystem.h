@@ -32,6 +32,7 @@
 
 #include <entity2/entityidentity.h>
 #include <entity2/entityinstance.h>
+#include <schemalib/schematype.h>
 #include "const.h"
 #include "stdint.h"
 #include "tier0/dbg.h"
@@ -42,6 +43,7 @@ struct SchemaKey
 {
 	int32 offset;
 	bool networked;
+	SchemaCollectionManipulatorFn_t manipulator;
 };
 
 class CNetworkVarChainer2

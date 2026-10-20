@@ -21,6 +21,7 @@
 #include <platform.h>
 #include "schemasystem.h"
 #include "soundflags.h"
+#include "gametrace.h"
 
 enum CSRoundEndReason
 {

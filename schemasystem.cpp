@@ -22,7 +22,7 @@
 
 #include "platform.h"
 #include "schemasystem/schemasystem.h"
-#include "tier1/utlmap.h"
+#include "utlmap.h"
 #include "tier0/memdbgon.h"
 #include <edict.h>
 #include <CBaseEntity.h>
@@ -54,6 +54,14 @@ static bool IsFieldNetworked(SchemaClassFieldData_t& field)
 
 // Try to recursively find __m_pChainEntity in base classes 
 // (e.g. CCSGameRules -> CTeamplayRules -> CMultiplayRules -> CGameRules, in this case it's in CGameRules)
+static SchemaCollectionManipulatorFn_t GetCollectionManipulator(SchemaClassFieldData_t& field)
+{
+	if (field.m_pType->m_eTypeCategory != SCHEMA_TYPE_ATOMIC || field.m_pType->m_eAtomicCategory != SCHEMA_ATOMIC_COLLECTION_OF_T)
+		return nullptr;
+
+	return static_cast<CSchemaType_Atomic_CollectionOfT*>(field.m_pType)->m_pfnManipulator;
+}
+
 static void InitChainOffset(SchemaClassInfoData_t *pClassInfo, SchemaKeyValueMap_t &keyValueMap)
 {
 	short fieldsSize = pClassInfo->m_nFieldCount;
@@ -70,6 +78,7 @@ static void InitChainOffset(SchemaClassInfoData_t *pClassInfo, SchemaKeyValueMap
 		keyValuePair.first = g_ChainKey;
 		keyValuePair.second.offset = field.m_nSingleInheritanceOffset;
 		keyValuePair.second.networked = IsFieldNetworked(field);
+		keyValuePair.second.manipulator = GetCollectionManipulator(field);
 
 		keyValueMap.insert(keyValuePair);
 		return;
@@ -168,7 +177,7 @@ SchemaKey schema::GetOffset(const char* className, uint32_t classKey, const char
 		if (InitSchemaFieldsForClass(schemaTableMap, className, classKey))
 			return GetOffset(className, classKey, memberName, memberKey);
 
-		return {0, 0};
+		return {0, false, nullptr};
 	}
 
 	SchemaKeyValueMap_t tableMap = schemaTableMap[classKey];
@@ -178,7 +187,7 @@ SchemaKey schema::GetOffset(const char* className, uint32_t classKey, const char
 		if (memberKey != g_ChainKey)
 			Warning("schema::GetOffset(): '%s' was not found in '%s'!\n", memberName, className);
 
-		return {0, 0};
+		return {0, false, nullptr};
 	}
 
 	return tableMap[memberKey];
@@ -205,13 +214,13 @@ int32_t schema::GetServerOffset(const char* pszClassName, const char* pszPropNam
 
 void NetworkVarStateChanged(uintptr_t pNetworkVar, uint32_t nOffset, uint32 nNetworkStateChangedOffset)
 {
-	NetworkStateChanged_t data(nOffset);
+	NetworkStateChangedData data(nOffset);
 	CALL_VIRTUAL(void, nNetworkStateChangedOffset, (void*)pNetworkVar, &data);
 }
 
 void EntityNetworkStateChanged(uintptr_t pEntity, uint nOffset)
 {
-	NetworkStateChanged_t data(nOffset);
+	NetworkStateChangedData data(nOffset);
 	reinterpret_cast<CEntityInstance*>(pEntity)->NetworkStateChanged(data);
 }
 
@@ -220,7 +229,5 @@ void ChainNetworkStateChanged(uintptr_t pNetworkVarChainer, uint nLocalOffset)
     CEntityInstance* pEntity = reinterpret_cast<CNetworkVarChainer2*>(pNetworkVarChainer)->m_pEntity;
 
     if (pEntity)
-		// NetworkStateChanged_t WENDER SDK
-		// NetworkStateChangedData HL2SDK-CS@
-        pEntity->NetworkStateChanged(NetworkStateChanged_t(nLocalOffset, -1, reinterpret_cast<CNetworkVarChainer2*>(pNetworkVarChainer)->m_PathIndex));
+        pEntity->NetworkStateChanged(NetworkStateChangedData(nLocalOffset, -1, reinterpret_cast<CNetworkVarChainer2*>(pNetworkVarChainer)->m_PathIndex));
 }
