@@ -42,10 +42,10 @@ static constexpr uint32_t g_ChainKey = hash_32_fnv1a_const("__m_pChainEntity");
 
 static bool IsFieldNetworked(SchemaClassFieldData_t& field)
 {
-	for (int i = 0; i < field.m_nStaticMetadataCount; i++)
+	for (int i = 0; i < field.m_nNumMetadata; i++)
 	{
 		static auto networkEnabled = hash_32_fnv1a_const("MNetworkEnable");
-		if (networkEnabled == hash_32_fnv1a_const(field.m_pStaticMetadata[i].m_pszName))
+		if (networkEnabled == hash_32_fnv1a_const(field.m_pMetadata[i].m_pName))
 			return true;
 	}
 
@@ -64,14 +64,14 @@ static SchemaCollectionManipulatorFn_t GetCollectionManipulator(SchemaClassField
 
 static void InitChainOffset(SchemaClassInfoData_t *pClassInfo, SchemaKeyValueMap_t &keyValueMap)
 {
-	short fieldsSize = pClassInfo->m_nFieldCount;
+	short fieldsSize = pClassInfo->m_nNumFields;
 	SchemaClassFieldData_t* pFields = pClassInfo->m_pFields;
 
 	for (int i = 0; i < fieldsSize; ++i)
 	{
 		SchemaClassFieldData_t& field = pFields[i];
 		
-		if (hash_32_fnv1a_const(field.m_pszName) != g_ChainKey)
+		if (hash_32_fnv1a_const(field.m_pName) != g_ChainKey)
 			continue;
 
 		std::pair<uint32_t, SchemaKey> keyValuePair;
@@ -85,13 +85,13 @@ static void InitChainOffset(SchemaClassInfoData_t *pClassInfo, SchemaKeyValueMap
 	}
 
 	// Not the base class yet, keep looking
-	if (pClassInfo->m_nBaseClassCount)
+	if (pClassInfo->m_nNumBaseClasses)
 		return InitChainOffset(pClassInfo->m_pBaseClasses[0].m_pClass, keyValueMap);
 }
 
 static void InitSchemaKeyValueMap(SchemaClassInfoData_t *pClassInfo, SchemaKeyValueMap_t& keyValueMap)
 {
-	short fieldsSize = pClassInfo->m_nFieldCount;
+	short fieldsSize = pClassInfo->m_nNumFields;
 	SchemaClassFieldData_t* pFields = pClassInfo->m_pFields;
 
 	for (int i = 0; i < fieldsSize; ++i)
@@ -99,7 +99,7 @@ static void InitSchemaKeyValueMap(SchemaClassInfoData_t *pClassInfo, SchemaKeyVa
 		SchemaClassFieldData_t& field = pFields[i];
 
 		std::pair<uint32_t, SchemaKey> keyValuePair;
-		keyValuePair.first = hash_32_fnv1a_const(field.m_pszName);
+		keyValuePair.first = hash_32_fnv1a_const(field.m_pName);
 		keyValuePair.second.offset = field.m_nSingleInheritanceOffset;
 		keyValuePair.second.networked = IsFieldNetworked(field);
 
@@ -107,7 +107,7 @@ static void InitSchemaKeyValueMap(SchemaClassInfoData_t *pClassInfo, SchemaKeyVa
 	}
 
 	// If this is a child class there might be a parent class with __m_pChainEntity
-	if (keyValueMap.find(g_ChainKey) == keyValueMap.end() && pClassInfo->m_nBaseClassCount)
+	if (keyValueMap.find(g_ChainKey) == keyValueMap.end() && pClassInfo->m_nNumBaseClasses)
 		InitChainOffset(pClassInfo->m_pBaseClasses[0].m_pClass, keyValueMap);
 }
 
@@ -153,12 +153,12 @@ int16_t schema::FindChainOffset(const char* className)
     do
     {
         SchemaClassFieldData_t* pFields = pClassInfo->m_pFields;
-        short fieldsSize = pClassInfo->m_nFieldCount;
+        short fieldsSize = pClassInfo->m_nNumFields;
         for (int i = 0; i < fieldsSize; ++i)
         {
             SchemaClassFieldData_t& field = pFields[i];
 
-            if (V_strcmp(field.m_pszName, "__m_pChainEntity") == 0)
+            if (V_strcmp(field.m_pName, "__m_pChainEntity") == 0)
             {
                 return field.m_nSingleInheritanceOffset;
             }
@@ -198,11 +198,11 @@ int32_t schema::GetServerOffset(const char* pszClassName, const char* pszPropNam
     SchemaClassInfoData_t* pClassInfo = g_pSchemaSystem->FindTypeScopeForModule(MODULE_PREFIX "server" MODULE_EXT)->FindDeclaredClass(pszClassName).Get();
     if (pClassInfo)
     {
-        for (int i = 0; i < pClassInfo->m_nFieldCount; i++)
+        for (int i = 0; i < pClassInfo->m_nNumFields; i++)
         {
             auto& pFieldData = pClassInfo->m_pFields[i];
 
-            if (std::strcmp(pFieldData.m_pszName, pszPropName) == 0)
+            if (std::strcmp(pFieldData.m_pName, pszPropName) == 0)
             {
                 return pFieldData.m_nSingleInheritanceOffset;
             }
@@ -230,4 +230,4 @@ void ChainNetworkStateChanged(uintptr_t pNetworkVarChainer, uint nLocalOffset)
 
     if (pEntity)
         pEntity->NetworkStateChanged(NetworkStateChangedData(nLocalOffset, -1, reinterpret_cast<CNetworkVarChainer2*>(pNetworkVarChainer)->m_PathIndex));
-}
+}
