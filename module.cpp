@@ -4,9 +4,7 @@
 
 #include "module.h"
 #include "memaddr.h"
-#include <cstring>
-#include <cmath>
-#include <emmintrin.h>
+#include "pattern_scan.h"
 
 using namespace DynLibUtils;
 
@@ -35,36 +33,11 @@ CModule::CModule(const CMemory pModuleMemory) : m_pModuleHandle(nullptr)
 //-----------------------------------------------------------------------------
 std::pair<std::vector<uint8_t>, std::string> CModule::PatternToMaskedBytes(const std::string_view svInput)
 {
-	char* pszPatternStart = const_cast<char*>(svInput.data());
-	char* pszPatternEnd = pszPatternStart + svInput.size();
-	std::vector<uint8_t> vBytes;
-	std::string svMask;
-
-	for (char* pszCurrentByte = pszPatternStart; pszCurrentByte < pszPatternEnd; ++pszCurrentByte)
-	{
-		if (*pszCurrentByte == '?')
-		{
-			++pszCurrentByte;
-			if (*pszCurrentByte == '?')
-			{
-				++pszCurrentByte; // Skip double wildcard.
-			}
-
-			vBytes.push_back(0); // Push the byte back as invalid.
-			svMask += '?';
-		}
-		else
-		{
-			vBytes.push_back(static_cast<uint8_t>(strtoul(pszCurrentByte, &pszCurrentByte, 16)));
-			svMask += 'x';
-		}
-	}
-
-	return std::make_pair(std::move(vBytes), std::move(svMask));
+	return ParsePattern(svInput);
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Finds an array of bytes in process memory using SIMD instructions
+// Purpose: Finds an array of bytes in process memory
 // Input  : *pPattern
 //          szMask
 //          pStartAddress
@@ -73,73 +46,22 @@ std::pair<std::vector<uint8_t>, std::string> CModule::PatternToMaskedBytes(const
 //-----------------------------------------------------------------------------
 CMemory CModule::FindPattern(const CMemory pPattern, const std::string_view szMask, const CMemory pStartAddress, const ModuleSections_t* pModuleSection) const
 {
-	const uint8_t* pattern = pPattern.RCast<const uint8_t*>();
-	const ModuleSections_t* section = pModuleSection ? pModuleSection : &m_ExecutableCode;
+	const auto* section = pModuleSection ? pModuleSection : &m_ExecutableCode;
 	if (!section->IsSectionValid())
 		return CMemory();
 
-	const uintptr_t nBase = section->m_pSectionBase;
-	const size_t nSize = section->m_nSectionSize;
+	const uintptr_t base = section->m_pSectionBase;
+	const uintptr_t start = pStartAddress ? static_cast<uintptr_t>(pStartAddress) : base;
+	if (start < base || start - base >= section->m_nSectionSize)
+		return CMemory();
 
-	const size_t nMaskLen = szMask.length();
-	const uint8_t* pData = reinterpret_cast<uint8_t*>(nBase);
-	const uint8_t* pEnd = pData + nSize - nMaskLen;
-
-	if(pStartAddress)
-	{
-		const uint8_t* startAddress = pStartAddress.RCast<uint8_t*>();
-		if(pData > startAddress || startAddress > pEnd)
-			return CMemory();
-
-		pData = startAddress;
-	}
-
-	int nMasks[64]; // 64*16 = enough masks for 1024 bytes.
-	const uint8_t iNumMasks = static_cast<uint8_t>(std::ceil(static_cast<float>(nMaskLen) / 16.f));
-
-	memset(nMasks, 0, iNumMasks * sizeof(int));
-	for (uint8_t i = 0; i < iNumMasks; ++i)
-	{
-		for (int8_t j = static_cast<int8_t>(std::min<size_t>(nMaskLen - i * 16, 16)) - 1; j >= 0; --j)
-		{
-			if (szMask[i * 16 + j] == 'x')
-			{
-				nMasks[i] |= 1 << j;
-			}
-		}
-	}
-
-	const __m128i xmm1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(pattern));
-	__m128i xmm2, xmm3, msks;
-	for (; pData != pEnd; _mm_prefetch(reinterpret_cast<const char*>(++pData + 64), _MM_HINT_NTA))
-	{
-		xmm2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(pData));
-		msks = _mm_cmpeq_epi8(xmm1, xmm2);
-		if ((_mm_movemask_epi8(msks) & nMasks[0]) == nMasks[0])
-		{
-			bool bFound = true;
-			for (uint8_t i = 1; i < iNumMasks; ++i)
-			{
-				xmm2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>((pData + i * 16)));
-				xmm3 = _mm_loadu_si128(reinterpret_cast<const __m128i*>((pattern + i * 16)));
-				msks = _mm_cmpeq_epi8(xmm2, xmm3);
-				if ((_mm_movemask_epi8(msks) & nMasks[i]) != nMasks[i])
-				{
-					bFound = false;
-					break;
-				}
-			}
-
-			if (bFound)
-				return pData;
-		}
-	}
-
-	return CMemory();
+	const auto* data = reinterpret_cast<const uint8_t*>(start);
+	const size_t size = section->m_nSectionSize - (start - base);
+	return ScanPattern(data, size, pPattern.RCast<const uint8_t*>(), szMask);
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Finds a string pattern in process memory using SIMD instructions
+// Purpose: Finds a string pattern in process memory
 // Input  : svPattern
 //          pStartAddress
 //          *pModuleSection

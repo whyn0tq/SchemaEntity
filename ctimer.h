@@ -8,6 +8,7 @@ public:
 		m_flInterval(flInitialInterval) {};
 
     virtual bool Execute() = 0;
+    virtual ~CTimerBase() = default;
 
     float m_flInterval;
     float m_flLastExecute = -1;
